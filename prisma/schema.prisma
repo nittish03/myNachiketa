@@ -1,0 +1,430 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  expires      DateTime
+  sessionToken String   @unique
+  accessToken  String   @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expires])
+  @@map("sessions")
+}
+
+model User {
+  id                      String    @id @default(cuid())
+  name                    String?
+  email                   String    @unique
+  role                    Role      @default(USER)
+  hashedPassword          String?
+  emailVerified           DateTime?
+  university              String?
+  degree                  String?
+  branch                  String?
+  image                   String?
+  instagramConnectEnabled Boolean   @default(false)
+  maxInstagramAccounts    Int       @default(0)
+  isActive                Boolean   @default(true)
+  aiAllowed               Boolean   @default(false)
+  aiEnabled               Boolean   @default(false)
+  aiApiKey                String?
+  consentAcceptedAt       DateTime?
+  consentVersion          String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  accounts                Account[]
+  sessions                Session[]
+  instagramConnections    InstagramConnection[]
+
+  @@map("users")
+}
+
+model NonVerifiedUser {
+  id             String   @id @default(cuid())
+  name           String
+  email          String   @unique
+  hashedPassword String
+  otp            String
+  otpExpiry      DateTime
+  consentVersion String?
+
+  @@index([otpExpiry])
+}
+
+model VerificationToken {
+  id         String   @id @default(cuid())
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@index([expires])
+  @@map("verification_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+enum AuditEventType {
+  login_success
+  login_failure
+  logout
+  account_created
+  account_deleted
+  password_changed
+  password_reset_requested
+  password_reset_completed
+  consent_accepted
+  admin_action
+}
+
+model SecurityAuditLog {
+  id        String         @id @default(cuid())
+  eventType AuditEventType
+  userId    String?
+  email     String?
+  ip        String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime       @default(now())
+
+  @@index([userId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([createdAt])
+  @@map("security_audit_logs")
+}
+
+// Dedicated audit-log table for the INSTA-SITE app, which shares this
+// database. Kept as its own table (not reused from SecurityAuditLog above)
+// so each app's admin log viewer only shows that app's own events.
+model InstaSiteAuditLog {
+  id        String         @id @default(cuid())
+  eventType AuditEventType
+  userId    String?
+  email     String?
+  ip        String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime       @default(now())
+
+  @@index([userId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([createdAt])
+  @@map("insta_site_audit_logs")
+}
+
+// Dedicated analytics tables for INSTA-SITE app tracking
+model InstaSiteAnalyticsSession {
+  id              String   @id @default(cuid())
+  sessionId       String   @unique
+  visitorId       String
+  ipHash          String?
+  userAgent       String?
+  deviceType      String?  @default("desktop")
+  browser         String?
+  os              String?
+  referrer        String?
+  referrerHost    String?
+  utmSource       String?
+  utmMedium       String?
+  utmCampaign     String?
+  firstPath       String?  @default("/")
+  pageViews       Int      @default(1)
+  clicksCount     Int      @default(0)
+  durationSeconds Int      @default(0)
+  lastActiveAt    DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  events          InstaSiteAnalyticsEvent[]
+
+  @@index([visitorId])
+  @@index([createdAt])
+  @@index([lastActiveAt])
+  @@map("insta_site_analytics_sessions")
+}
+
+model InstaSiteAnalyticsEvent {
+  id             String                    @id @default(cuid())
+  sessionId      String
+  session        InstaSiteAnalyticsSession @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  eventType      String
+  pagePath       String                    @default("/")
+  productId      String?
+  productKeyword String?
+  targetUrl      String?
+  metadata       Json?
+  createdAt      DateTime                  @default(now())
+
+  @@index([sessionId])
+  @@index([eventType, createdAt])
+  @@index([productId])
+  @@index([createdAt])
+  @@map("insta_site_analytics_events")
+}
+
+enum MatchType {
+  exact
+  contains
+}
+
+enum TriggerType {
+  dm
+  comment
+}
+
+enum AutomationEventType {
+  dm
+  comment
+}
+
+enum AutomationSource {
+  keyword
+  ai
+  default
+}
+
+enum AutomationStatus {
+  success
+  skipped
+  error
+}
+
+model InstagramConnection {
+  id                         String          @id @default(cuid())
+  pageId                     String          @unique
+  igUserId                   String          @unique
+  pageAccessToken            String
+  pageName                   String?
+  igUsername                 String?
+  label                      String?
+  tokenExpiresAt             DateTime?
+  aiApiKey                   String?
+  aiEnabled                  Boolean         @default(false)
+  keywordsEnabled            Boolean         @default(true)
+  dmAutomationEnabled        Boolean         @default(true)
+  commentAutomationEnabled   Boolean         @default(true)
+  mediaAutomationEnabled     Boolean         @default(true)
+  dmKeywordsEnabled          Boolean         @default(true)
+  dmKeywordOnly              Boolean         @default(false)
+  dmDefaultReplyEnabled      Boolean         @default(true)
+  dmAiEnabled                Boolean         @default(false)
+  commentKeywordsEnabled     Boolean         @default(true)
+  commentKeywordOnly         Boolean         @default(false)
+  commentDefaultReplyEnabled Boolean         @default(true)
+  commentAiEnabled           Boolean         @default(false)
+  mediaKeywordsEnabled       Boolean         @default(true)
+  mediaKeywordOnly           Boolean         @default(false)
+  mediaDefaultReplyEnabled   Boolean         @default(true)
+  mediaAiEnabled             Boolean         @default(false)
+  commentPublicReplyEnabled  Boolean         @default(false)
+  commentPublicReplyText     String?
+  defaultNoMatchMessage      String?
+  selfDmAutomationPaused     Boolean         @default(false)
+  userId                     String
+  user                       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keywordRules               KeywordRule[]
+  media                      InstagramMedia[]
+  automationLogs             AutomationLog[]
+  automationUserThreads      AutomationUserThread[]
+  moderatedThreads           ModeratedThread[]
+  createdAt                  DateTime        @default(now())
+  updatedAt                  DateTime        @updatedAt
+
+  @@index([userId])
+  @@map("instagram_connections")
+}
+
+model InstagramMedia {
+  id                        String              @id @default(cuid())
+  connectionId              String
+  connection                InstagramConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  igMediaId                 String
+  mediaType                 String?
+  caption                   String?
+  permalink                 String?
+  thumbnailUrl              String?
+  publishedAt               DateTime?
+  keywordsEnabled           Boolean             @default(true)
+  commentPublicReplyEnabled Boolean             @default(false)
+  commentPublicReplyText    String?
+  defaultNoMatchMessage     String?
+  userAdded                 Boolean             @default(false)
+  keywordRules              KeywordRuleMedia[]
+  keywordExclusions         KeywordRuleExclusion[]
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+
+  @@unique([connectionId, igMediaId])
+  @@index([connectionId])
+  @@map("instagram_media")
+}
+
+model KeywordRuleMedia {
+  id      String         @id @default(cuid())
+  ruleId  String
+  rule    KeywordRule    @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  mediaId String
+  media   InstagramMedia @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  active  Boolean        @default(true)
+
+  @@unique([ruleId, mediaId])
+  @@index([mediaId])
+  @@map("keyword_rule_media")
+}
+
+model KeywordRuleExclusion {
+  id      String         @id @default(cuid())
+  ruleId  String
+  rule    KeywordRule    @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  mediaId String
+  media   InstagramMedia @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, mediaId])
+  @@index([mediaId])
+  @@map("keyword_rule_exclusions")
+}
+
+model KeywordRule {
+  id                        String              @id @default(cuid())
+  connectionId              String
+  connection                InstagramConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  keyword                   String
+  matchType                 MatchType           @default(contains)
+  trigger                   TriggerType         @default(dm)
+  message                   String
+  affiliateUrl              String
+  active                    Boolean             @default(true)
+  commentPublicReplyEnabled Boolean             @default(false)
+  commentPublicReplyText    String?
+  priority                  Int                 @default(0)
+  mediaTargets              KeywordRuleMedia[]
+  exclusions                KeywordRuleExclusion[]
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+
+  logs                      AutomationLog[]
+  userThreads               AutomationUserThread[]
+
+  @@index([connectionId, active])
+  @@index([active, priority])
+  @@index([keyword])
+  @@map("keyword_rules")
+}
+
+model AutomationLog {
+  id              String              @id @default(cuid())
+  connectionId    String
+  connection      InstagramConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  eventType       AutomationEventType
+  source          AutomationSource
+  status          AutomationStatus
+  externalId      String?
+  senderId        String?
+  senderUsername  String?
+  incomingText    String?
+  outgoingText    String?
+  matchedRuleId   String?
+  matchedRule     KeywordRule?        @relation(fields: [matchedRuleId], references: [id], onDelete: SetNull)
+  errorMessage    String?
+  createdAt       DateTime            @default(now())
+
+  @@unique([connectionId, externalId])
+  @@index([connectionId, createdAt])
+  @@index([createdAt])
+  @@index([status])
+  @@index([eventType])
+  @@map("automation_logs")
+}
+
+model AutomationUserThread {
+  id                  String              @id @default(cuid())
+  connectionId        String
+  connection          InstagramConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  senderId            String
+  senderUsername      String?
+  messages            Json
+  messageCount        Int                 @default(0)
+  lastEventAt         DateTime
+  lastStatus          AutomationStatus
+  lastSource          AutomationSource
+  lastEventType       AutomationEventType
+  lastIncomingPreview String?
+  lastOutgoingPreview String?
+  lastMatchedRuleId   String?
+  lastMatchedRule     KeywordRule?        @relation(fields: [lastMatchedRuleId], references: [id], onDelete: SetNull)
+  aiDisabled          Boolean             @default(false)
+  keywordsDisabled    Boolean             @default(false)
+  dmDisabled          Boolean             @default(false)
+  commentDisabled     Boolean             @default(false)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@unique([connectionId, senderId])
+  @@index([connectionId, lastEventAt])
+  @@index([connectionId, senderUsername])
+  @@map("automation_user_threads")
+}
+
+enum ThreadModerationAction {
+  archived
+}
+
+model ModeratedThread {
+  id           String                 @id @default(cuid())
+  connectionId String
+  connection   InstagramConnection    @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  senderId     String
+  action       ThreadModerationAction @default(archived)
+  moderatedBy  String
+  createdAt    DateTime               @default(now())
+
+  @@unique([connectionId, senderId])
+  @@index([connectionId])
+  @@map("moderated_threads")
+}
