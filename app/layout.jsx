@@ -4,7 +4,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { getFrontendBaseUrl } from "@/lib/frontendBaseUrl";
 
 const baseUrl = getFrontendBaseUrl();
-const siteName = "Finds";
+const siteName = "myNachiketa";
 
 export const metadata = {
   metadataBase: new URL(baseUrl),
