@@ -19,6 +19,12 @@ function errMsg(err, fallback) {
   return err.response?.data?.error || err.message || fallback;
 }
 
+function toYmd(value) {
+  if (!value) return "";
+  const s = String(value).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+}
+
 export default function StaffManagementPage() {
   const [tab, setTab] = useState("list");
   const [filters, setFilters] = useState({ roles: [], departments: [], shifts: [], statuses: [] });
@@ -65,7 +71,7 @@ export default function StaffManagementPage() {
     setUpdateCode(m.employeeCode || "");
     setUpdateDept(m.department || "");
     setLookupEmail(m.email);
-    setUpdateForm({ fullName: m.fullName || "", email: m.email || "", phone: m.phone || "", role: m.role || "", shift: m.shift || "", status: m.status || "Active", joiningDate: m.joiningDate || "" });
+    setUpdateForm({ fullName: m.fullName || "", email: m.email || "", phone: m.phone || "", role: m.role || "", shift: m.shift || "", status: m.status || "Active", joiningDate: toYmd(m.joiningDate) });
     setUpdateError("");
     setUpdated(null);
     setTab("update");
@@ -87,7 +93,7 @@ export default function StaffManagementPage() {
     setCreateError("");
     setCreated(null);
     try {
-      const r = await api("post", "/api/staff", createForm);
+      const r = await api("post", "/api/staff", { ...createForm, joiningDate: toYmd(createForm.joiningDate) });
       setCreated(r.data);
       setCreateForm(EMPTY);
       setRefresh((n) => n + 1);
@@ -122,7 +128,7 @@ export default function StaffManagementPage() {
     setUpdateError("");
     setUpdated(null);
     try {
-      const r = await api("put", `/api/staff/${updateId}`, updateForm);
+      const r = await api("put", `/api/staff/${updateId}`, { ...updateForm, joiningDate: toYmd(updateForm.joiningDate) });
       setUpdated(r.data);
       setUpdateCode(r.data.employeeCode || "");
       setUpdateDept(r.data.department || "");
@@ -152,12 +158,25 @@ export default function StaffManagementPage() {
   function fields(form, setForm) {
     return (
       <>
-        {[["Full name", "fullName", "text"], ["Email", "email", "email"], ["Phone", "phone", "text"], ["Joining date", "joiningDate", "date"]].map(([label, key, type]) => (
+        {[["Full name", "fullName", "text"], ["Email", "email", "email"], ["Phone", "phone", "text"]].map(([label, key, type]) => (
           <label key={key} className="flex flex-col gap-1 text-xs font-semibold">
             {label}
             <input className={inp} type={type} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required />
           </label>
         ))}
+        <label className="flex flex-col gap-1 text-xs font-semibold">
+          Joining date
+          <input
+            className={inp}
+            type="text"
+            placeholder="YYYY-MM-DD"
+            pattern="\d{4}-\d{2}-\d{2}"
+            maxLength={10}
+            value={form.joiningDate}
+            onChange={(e) => setForm({ ...form, joiningDate: e.target.value })}
+            required
+          />
+        </label>
         <label className="flex flex-col gap-1 text-xs font-semibold">
           Role
           <select className={inp} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} required>
@@ -230,7 +249,7 @@ export default function StaffManagementPage() {
                       <td className="whitespace-nowrap px-3 py-2">{m.department}</td>
                       <td className="whitespace-nowrap px-3 py-2">{m.shift}</td>
                       <td className="whitespace-nowrap px-3 py-2">{m.status}</td>
-                      <td className="whitespace-nowrap px-3 py-2">{m.joiningDate}</td>
+                      <td className="whitespace-nowrap px-3 py-2">{toYmd(m.joiningDate) || "—"}</td>
                       <td className="whitespace-nowrap px-3 py-2">
                         <div className="flex gap-1">
                           <button type="button" className={`${btn} border border-slate-200 bg-slate-100 dark:border-slate-600 dark:bg-slate-700`} onClick={() => loadEdit(m)}>Edit</button>
