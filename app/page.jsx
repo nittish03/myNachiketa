@@ -1,446 +1,241 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  createStaff,
-  deleteStaff,
-  getFilters,
-  getStaff,
-  updateStaff,
-} from "@/lib/api";
+import axios from "axios";
 
-const EMPTY_FORM = {
-  fullName: "",
-  email: "",
-  phone: "",
-  role: "",
-  shift: "",
-  status: "Active",
-  joiningDate: "",
-};
+const BASE = (process.env.NEXT_PUBLIC_BACKEND_URL || "https://testaug.onrender.com").replace(/\/+$/, "");
+const http = axios.create({ baseURL: BASE, headers: { "Content-Type": "application/json" } });
+const EMPTY = { fullName: "", email: "", phone: "", role: "", shift: "", status: "Active", joiningDate: "" };
+const inp = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800";
+const btn = "rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-60";
+
+async function api(method, url, data) {
+  const res = method === "get" ? await http.get(url, { params: data }) : await http[method](url, data);
+  if (!res.data.success) throw new Error(res.data.error || "Request failed");
+  return res.data;
+}
+
+function errMsg(err, fallback) {
+  return err.response?.data?.error || err.message || fallback;
+}
 
 export default function StaffManagementPage() {
-  const [activeTab, setActiveTab] = useState("list");
-
-  const [filters, setFilters] = useState({
-    roles: [],
-    departments: [],
-    shifts: [],
-    statuses: [],
-  });
-
+  const [tab, setTab] = useState("list");
+  const [filters, setFilters] = useState({ roles: [], departments: [], shifts: [], statuses: [] });
   const [staff, setStaff] = useState([]);
   const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState("");
+  const [deptFilter, setDeptFilter] = useState("");
   const [shiftFilter, setShiftFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState("");
-
-  const [createForm, setCreateForm] = useState(EMPTY_FORM);
+  const [createForm, setCreateForm] = useState(EMPTY);
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState("");
-  const [createdStaff, setCreatedStaff] = useState(null);
-
-  const [updateForm, setUpdateForm] = useState(EMPTY_FORM);
+  const [created, setCreated] = useState(null);
+  const [updateForm, setUpdateForm] = useState(EMPTY);
   const [updateId, setUpdateId] = useState("");
-  const [updateEmployeeCode, setUpdateEmployeeCode] = useState("");
-  const [updateDepartment, setUpdateDepartment] = useState("");
+  const [updateCode, setUpdateCode] = useState("");
+  const [updateDept, setUpdateDept] = useState("");
   const [lookupEmail, setLookupEmail] = useState("");
   const [updateLoading, setUpdateLoading] = useState(false);
   const [updateError, setUpdateError] = useState("");
-  const [updatedStaff, setUpdatedStaff] = useState(null);
-
-  const [deleteLoadingId, setDeleteLoadingId] = useState("");
-  const [refreshList, setRefreshList] = useState(0);
+  const [updated, setUpdated] = useState(null);
+  const [deleteId, setDeleteId] = useState("");
+  const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
-    async function loadFilters() {
-      try {
-        const res = await getFilters();
-        setFilters(res.data);
-      } catch (err) {
-        setListError(err.message || "Failed to load filters");
-      }
-    }
-    loadFilters();
+    api("get", "/api/filters").then((r) => setFilters(r.data)).catch((e) => setListError(errMsg(e, "Failed to load filters")));
   }, []);
 
   useEffect(() => {
-    async function loadStaff() {
-      setListLoading(true);
-      setListError("");
-      try {
-        const res = await getStaff({
-          q: search,
-          role: roleFilter,
-          department: departmentFilter,
-          shift: shiftFilter,
-          status: statusFilter,
-          page,
-          limit: 10,
-        });
-        setStaff(res.data);
-        setMeta(res.meta);
-      } catch (err) {
-        setListError(err.message || "Failed to load staff");
-        setStaff([]);
-      } finally {
-        setListLoading(false);
-      }
-    }
-    loadStaff();
-  }, [search, roleFilter, departmentFilter, shiftFilter, statusFilter, page, refreshList]);
+    setListLoading(true);
+    setListError("");
+    api("get", "/api/staff", { q: search, role: roleFilter, department: deptFilter, shift: shiftFilter, status: statusFilter, page, limit: 10 })
+      .then((r) => { setStaff(r.data); setMeta(r.meta); })
+      .catch((e) => { setListError(errMsg(e, "Failed to load staff")); setStaff([]); })
+      .finally(() => setListLoading(false));
+  }, [search, roleFilter, deptFilter, shiftFilter, statusFilter, page, refresh]);
 
-  function startEdit(staffMember) {
-    setUpdateId(staffMember.id);
-    setUpdateEmployeeCode(staffMember.employeeCode || "");
-    setUpdateDepartment(staffMember.department || "");
-    setLookupEmail(staffMember.email);
-    setUpdateForm({
-      fullName: staffMember.fullName || "",
-      email: staffMember.email || "",
-      phone: staffMember.phone || "",
-      role: staffMember.role || "",
-      shift: staffMember.shift || "",
-      status: staffMember.status || "Active",
-      joiningDate: staffMember.joiningDate || "",
-    });
+  function loadEdit(m) {
+    setUpdateId(m.id);
+    setUpdateCode(m.employeeCode || "");
+    setUpdateDept(m.department || "");
+    setLookupEmail(m.email);
+    setUpdateForm({ fullName: m.fullName || "", email: m.email || "", phone: m.phone || "", role: m.role || "", shift: m.shift || "", status: m.status || "Active", joiningDate: m.joiningDate || "" });
     setUpdateError("");
-    setUpdatedStaff(null);
-    setActiveTab("update");
+    setUpdated(null);
+    setTab("update");
   }
 
-  async function handleCreate(e) {
+  function clearUpdate() {
+    setUpdateForm(EMPTY);
+    setUpdateId("");
+    setUpdateCode("");
+    setUpdateDept("");
+    setLookupEmail("");
+    setUpdateError("");
+    setUpdated(null);
+  }
+
+  async function onCreate(e) {
     e.preventDefault();
     setCreateLoading(true);
     setCreateError("");
-    setCreatedStaff(null);
+    setCreated(null);
     try {
-      const res = await createStaff(createForm);
-      setCreatedStaff(res.data);
-      setCreateForm(EMPTY_FORM);
-      setRefreshList((n) => n + 1);
-    } catch (err) {
-      setCreateError(err.message || "Failed to create staff");
+      const r = await api("post", "/api/staff", createForm);
+      setCreated(r.data);
+      setCreateForm(EMPTY);
+      setRefresh((n) => n + 1);
+    } catch (e) {
+      setCreateError(errMsg(e, "Failed to create staff"));
     } finally {
       setCreateLoading(false);
     }
   }
 
-  async function handleLookupByEmail(e) {
+  async function onLookup(e) {
     e.preventDefault();
-    if (!lookupEmail.trim()) {
-      setUpdateError("Enter an email to search");
-      return;
-    }
+    if (!lookupEmail.trim()) return setUpdateError("Enter an email to search");
     setUpdateLoading(true);
     setUpdateError("");
-    setUpdatedStaff(null);
+    setUpdated(null);
     try {
-      const res = await getStaff({ q: lookupEmail.trim(), limit: 1 });
-      if (!res.data.length) {
-        setUpdateError("No staff found with that email");
-        return;
-      }
-      startEdit(res.data[0]);
-    } catch (err) {
-      setUpdateError(err.message || "Failed to find staff");
+      const r = await api("get", "/api/staff", { q: lookupEmail.trim(), limit: 1 });
+      if (!r.data.length) return setUpdateError("No staff found with that email");
+      loadEdit(r.data[0]);
+    } catch (e) {
+      setUpdateError(errMsg(e, "Failed to find staff"));
     } finally {
       setUpdateLoading(false);
     }
   }
 
-  async function handleUpdate(e) {
+  async function onUpdate(e) {
     e.preventDefault();
-    if (!updateId) {
-      setUpdateError("Load a staff member first");
-      return;
-    }
+    if (!updateId) return setUpdateError("Load a staff member first");
     setUpdateLoading(true);
     setUpdateError("");
-    setUpdatedStaff(null);
+    setUpdated(null);
     try {
-      const res = await updateStaff(updateId, updateForm);
-      setUpdatedStaff(res.data);
-      setUpdateEmployeeCode(res.data.employeeCode || "");
-      setUpdateDepartment(res.data.department || "");
-      setRefreshList((n) => n + 1);
-    } catch (err) {
-      setUpdateError(err.message || "Failed to update staff");
+      const r = await api("put", `/api/staff/${updateId}`, updateForm);
+      setUpdated(r.data);
+      setUpdateCode(r.data.employeeCode || "");
+      setUpdateDept(r.data.department || "");
+      setRefresh((n) => n + 1);
+    } catch (e) {
+      setUpdateError(errMsg(e, "Failed to update staff"));
     } finally {
       setUpdateLoading(false);
     }
   }
 
-  async function handleDelete(staffMember) {
-    if (!window.confirm(`Delete ${staffMember.fullName} (${staffMember.email})?`)) {
-      return;
-    }
-    setDeleteLoadingId(staffMember.id);
+  async function onDelete(m) {
+    if (!window.confirm(`Delete ${m.fullName} (${m.email})?`)) return;
+    setDeleteId(m.id);
     setListError("");
     try {
-      await deleteStaff(staffMember.id);
-      if (updateId === staffMember.id) {
-        setUpdateId("");
-        setUpdateForm(EMPTY_FORM);
-        setUpdateEmployeeCode("");
-        setUpdateDepartment("");
-        setLookupEmail("");
-        setUpdateError("");
-        setUpdatedStaff(null);
-      }
-      setRefreshList((n) => n + 1);
-    } catch (err) {
-      setListError(err.message || "Failed to delete staff");
+      await api("delete", `/api/staff/${m.id}`);
+      if (updateId === m.id) clearUpdate();
+      setRefresh((n) => n + 1);
+    } catch (e) {
+      setListError(errMsg(e, "Failed to delete staff"));
     } finally {
-      setDeleteLoadingId("");
+      setDeleteId("");
     }
   }
 
-  function renderFormFields(form, setForm) {
+  function fields(form, setForm) {
     return (
       <>
-        <label className="staff-label">
-          Full name
-          <input
-            className="auth-input"
-            value={form.fullName}
-            onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-            required
-          />
-        </label>
-        <label className="staff-label">
-          Email
-          <input
-            className="auth-input"
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            required
-          />
-        </label>
-        <label className="staff-label">
-          Phone
-          <input
-            className="auth-input"
-            value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
-            required
-          />
-        </label>
-        <label className="staff-label">
+        {[["Full name", "fullName", "text"], ["Email", "email", "email"], ["Phone", "phone", "text"], ["Joining date", "joiningDate", "date"]].map(([label, key, type]) => (
+          <label key={key} className="flex flex-col gap-1 text-xs font-semibold">
+            {label}
+            <input className={inp} type={type} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required />
+          </label>
+        ))}
+        <label className="flex flex-col gap-1 text-xs font-semibold">
           Role
-          <select
-            className="auth-input"
-            value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value })}
-            required
-          >
+          <select className={inp} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} required>
             <option value="">Select role</option>
-            {filters.roles.map((role) => (
-              <option key={role} value={role}>
-                {role}
-              </option>
-            ))}
+            {filters.roles.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </label>
-        <label className="staff-label">
+        <label className="flex flex-col gap-1 text-xs font-semibold">
           Shift
-          <select
-            className="auth-input"
-            value={form.shift}
-            onChange={(e) => setForm({ ...form, shift: e.target.value })}
-            required
-          >
+          <select className={inp} value={form.shift} onChange={(e) => setForm({ ...form, shift: e.target.value })} required>
             <option value="">Select shift</option>
-            {filters.shifts.map((shift) => (
-              <option key={shift} value={shift}>
-                {shift}
-              </option>
-            ))}
+            {filters.shifts.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </label>
-        <label className="staff-label">
+        <label className="flex flex-col gap-1 text-xs font-semibold">
           Status
-          <select
-            className="auth-input"
-            value={form.status}
-            onChange={(e) => setForm({ ...form, status: e.target.value })}
-            required
-          >
-            {filters.statuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
+          <select className={inp} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} required>
+            {filters.statuses.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
-        </label>
-        <label className="staff-label">
-          Joining date
-          <input
-            className="auth-input"
-            type="date"
-            value={form.joiningDate}
-            onChange={(e) => setForm({ ...form, joiningDate: e.target.value })}
-            required
-          />
         </label>
       </>
     );
   }
 
-  return (
-    <div className="staff-page">
-      <header className="staff-header">
-        <h1>Hotel Staff Management</h1>
-        <p>Create, view, update, and delete hotel staff records.</p>
-      </header>
+  const filterSelect = (value, setValue, label, options) => (
+    <select className={`${inp} min-w-[140px] flex-1`} value={value} onChange={(e) => { setValue(e.target.value); setPage(1); }}>
+      <option value="">{label}</option>
+      {options.map((v) => <option key={v} value={v}>{v}</option>)}
+    </select>
+  );
 
-      <nav className="staff-tabs">
-        {[
-          ["list", "Staff list"],
-          ["create", "Add staff"],
-          ["update", "Update staff"],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            className={`staff-tab${activeTab === key ? " staff-tab-active" : ""}`}
-            onClick={() => setActiveTab(key)}
-          >
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-8">
+      <h1 className="text-2xl font-bold">Hotel Staff Management</h1>
+
+      <div className="mt-6 flex flex-wrap gap-2">
+        {[["list", "Staff list"], ["create", "Add staff"], ["update", "Update staff"]].map(([k, label]) => (
+          <button key={k} type="button" className={`${btn} border ${tab === k ? "border-teal-700 bg-teal-700 text-white" : "border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-800"}`} onClick={() => setTab(k)}>
             {label}
           </button>
         ))}
-      </nav>
+      </div>
 
-      {activeTab === "list" && (
-        <section className="staff-section">
-          <div className="staff-toolbar">
-            <input
-              className="auth-input staff-search"
-              type="search"
-              placeholder="Search by name, email, phone..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-            />
-            <select
-              className="auth-input staff-filter"
-              value={roleFilter}
-              onChange={(e) => {
-                setRoleFilter(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">All roles</option>
-              {filters.roles.map((role) => (
-                <option key={role} value={role}>
-                  {role}
-                </option>
-              ))}
-            </select>
-            <select
-              className="auth-input staff-filter"
-              value={departmentFilter}
-              onChange={(e) => {
-                setDepartmentFilter(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">All departments</option>
-              {filters.departments.map((dept) => (
-                <option key={dept} value={dept}>
-                  {dept}
-                </option>
-              ))}
-            </select>
-            <select
-              className="auth-input staff-filter"
-              value={shiftFilter}
-              onChange={(e) => {
-                setShiftFilter(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">All shifts</option>
-              {filters.shifts.map((shift) => (
-                <option key={shift} value={shift}>
-                  {shift}
-                </option>
-              ))}
-            </select>
-            <select
-              className="auth-input staff-filter"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">All statuses</option>
-              {filters.statuses.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
+      {tab === "list" && (
+        <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-600 dark:bg-slate-800">
+          <div className="mb-4 flex flex-wrap gap-2">
+            <input className={`${inp} min-w-[200px] flex-1`} type="search" placeholder="Search name, email, phone..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+            {filterSelect(roleFilter, setRoleFilter, "All roles", filters.roles)}
+            {filterSelect(deptFilter, setDeptFilter, "All departments", filters.departments)}
+            {filterSelect(shiftFilter, setShiftFilter, "All shifts", filters.shifts)}
+            {filterSelect(statusFilter, setStatusFilter, "All statuses", filters.statuses)}
           </div>
 
-          {listError && <p className="staff-error">{listError}</p>}
-
-          {listLoading ? (
-            <p className="staff-message">Loading staff...</p>
-          ) : staff.length === 0 ? (
-            <p className="staff-message">No staff found.</p>
-          ) : (
-            <div className="staff-table-wrap">
-              <table className="staff-table">
+          {listError && <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{listError}</p>}
+          {listLoading ? <p className="py-8 text-center text-slate-500">Loading staff...</p> : staff.length === 0 ? <p className="py-8 text-center text-slate-500">No staff found.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
                 <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>Role</th>
-                    <th>Department</th>
-                    <th>Shift</th>
-                    <th>Status</th>
-                    <th>Joining date</th>
-                    <th>Actions</th>
+                  <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900">
+                    {["Name", "Email", "Phone", "Role", "Department", "Shift", "Status", "Joining", "Actions"].map((h) => <th key={h} className="whitespace-nowrap px-3 py-2 text-left font-semibold">{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
-                  {staff.map((member) => (
-                    <tr key={member.id}>
-                      <td>{member.fullName}</td>
-                      <td>{member.email}</td>
-                      <td>{member.phone}</td>
-                      <td>{member.role}</td>
-                      <td>{member.department}</td>
-                      <td>{member.shift}</td>
-                      <td>{member.status}</td>
-                      <td>{member.joiningDate}</td>
-                      <td className="staff-actions">
-                        <button
-                          type="button"
-                          className="staff-btn staff-btn-secondary"
-                          onClick={() => startEdit(member)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="staff-btn staff-btn-danger"
-                          disabled={deleteLoadingId === member.id}
-                          onClick={() => handleDelete(member)}
-                        >
-                          {deleteLoadingId === member.id ? "Deleting..." : "Delete"}
-                        </button>
+                  {staff.map((m) => (
+                    <tr key={m.id} className="border-b border-slate-100 dark:border-slate-700">
+                      <td className="whitespace-nowrap px-3 py-2">{m.fullName}</td>
+                      <td className="whitespace-nowrap px-3 py-2">{m.email}</td>
+                      <td className="whitespace-nowrap px-3 py-2">{m.phone}</td>
+                      <td className="whitespace-nowrap px-3 py-2">{m.role}</td>
+                      <td className="whitespace-nowrap px-3 py-2">{m.department}</td>
+                      <td className="whitespace-nowrap px-3 py-2">{m.shift}</td>
+                      <td className="whitespace-nowrap px-3 py-2">{m.status}</td>
+                      <td className="whitespace-nowrap px-3 py-2">{m.joiningDate}</td>
+                      <td className="whitespace-nowrap px-3 py-2">
+                        <div className="flex gap-1">
+                          <button type="button" className={`${btn} border border-slate-200 bg-slate-100 dark:border-slate-600 dark:bg-slate-700`} onClick={() => loadEdit(m)}>Edit</button>
+                          <button type="button" className={`${btn} border border-red-200 bg-red-50 text-red-700`} disabled={deleteId === m.id} onClick={() => onDelete(m)}>{deleteId === m.id ? "Deleting..." : "Delete"}</button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -450,118 +245,45 @@ export default function StaffManagementPage() {
           )}
 
           {!listLoading && meta.totalPages > 1 && (
-            <div className="staff-pagination">
-              <button
-                type="button"
-                className="staff-btn staff-btn-secondary"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-              >
-                Previous
-              </button>
-              <span>
-                Page {meta.page} of {meta.totalPages} ({meta.total} total)
-              </span>
-              <button
-                type="button"
-                className="staff-btn staff-btn-secondary"
-                disabled={page >= meta.totalPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </button>
+            <div className="mt-4 flex items-center justify-center gap-4 text-sm">
+              <button type="button" className={`${btn} border border-slate-200 bg-slate-100 dark:border-slate-600 dark:bg-slate-700`} disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</button>
+              <span>Page {meta.page} of {meta.totalPages} ({meta.total} total)</span>
+              <button type="button" className={`${btn} border border-slate-200 bg-slate-100 dark:border-slate-600 dark:bg-slate-700`} disabled={page >= meta.totalPages} onClick={() => setPage((p) => p + 1)}>Next</button>
             </div>
           )}
         </section>
       )}
 
-      {activeTab === "create" && (
-        <section className="staff-section">
-          <h2>Add new staff</h2>
-          {createError && <p className="staff-error">{createError}</p>}
-          {createdStaff && (
-            <div className="staff-success">
-              <strong>Staff created:</strong> {createdStaff.fullName} (
-              {createdStaff.employeeCode}) — {createdStaff.email}
-            </div>
-          )}
-          <form className="staff-form" onSubmit={handleCreate}>
-            {renderFormFields(createForm, setCreateForm)}
-            <div className="staff-form-actions">
-              <button type="submit" className="auth-submit staff-submit" disabled={createLoading}>
-                {createLoading ? "Creating..." : "Create staff"}
-              </button>
-              <button
-                type="button"
-                className="staff-btn staff-btn-secondary"
-                onClick={() => {
-                  setCreateForm(EMPTY_FORM);
-                  setCreateError("");
-                  setCreatedStaff(null);
-                }}
-              >
-                Reset
-              </button>
+      {tab === "create" && (
+        <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-600 dark:bg-slate-800">
+          <h2 className="mb-4 text-lg font-semibold">Add new staff</h2>
+          {createError && <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{createError}</p>}
+          {created && <p className="mb-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">Created: {created.fullName} ({created.employeeCode}) — {created.email}</p>}
+          <form className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4" onSubmit={onCreate}>
+            {fields(createForm, setCreateForm)}
+            <div className="col-span-full flex gap-2">
+              <button type="submit" className={`${btn} bg-teal-700 px-5 text-white`} disabled={createLoading}>{createLoading ? "Creating..." : "Create staff"}</button>
+              <button type="button" className={`${btn} border border-slate-200 bg-slate-100 dark:border-slate-600 dark:bg-slate-700`} onClick={() => { setCreateForm(EMPTY); setCreateError(""); setCreated(null); }}>Reset</button>
             </div>
           </form>
         </section>
       )}
 
-      {activeTab === "update" && (
-        <section className="staff-section">
-          <h2>Update staff</h2>
-          <form className="staff-lookup" onSubmit={handleLookupByEmail}>
-            <input
-              className="auth-input"
-              type="email"
-              placeholder="Find by email"
-              value={lookupEmail}
-              onChange={(e) => setLookupEmail(e.target.value)}
-            />
-            <button type="submit" className="staff-btn staff-btn-secondary" disabled={updateLoading}>
-              {updateLoading && !updateId ? "Searching..." : "Find"}
-            </button>
+      {tab === "update" && (
+        <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-600 dark:bg-slate-800">
+          <h2 className="mb-4 text-lg font-semibold">Update staff</h2>
+          <form className="mb-2 flex flex-wrap gap-2" onSubmit={onLookup}>
+            <input className={`${inp} min-w-[240px] flex-1`} type="email" placeholder="Find by email" value={lookupEmail} onChange={(e) => setLookupEmail(e.target.value)} />
+            <button type="submit" className={`${btn} border border-slate-200 bg-slate-100 dark:border-slate-600 dark:bg-slate-700`} disabled={updateLoading}>{updateLoading && !updateId ? "Searching..." : "Find"}</button>
           </form>
-
-          {updateId && (
-            <p className="staff-meta">
-              Editing {updateEmployeeCode}
-              {updateDepartment ? ` · ${updateDepartment}` : ""}
-            </p>
-          )}
-
-          {updateError && <p className="staff-error">{updateError}</p>}
-          {updatedStaff && (
-            <div className="staff-success">
-              <strong>Staff updated:</strong> {updatedStaff.fullName} — {updatedStaff.email}
-            </div>
-          )}
-
-          <form className="staff-form" onSubmit={handleUpdate}>
-            {renderFormFields(updateForm, setUpdateForm)}
-            <div className="staff-form-actions">
-              <button
-                type="submit"
-                className="auth-submit staff-submit"
-                disabled={updateLoading || !updateId}
-              >
-                {updateLoading && updateId ? "Updating..." : "Update staff"}
-              </button>
-              <button
-                type="button"
-                className="staff-btn staff-btn-secondary"
-                onClick={() => {
-                  setUpdateForm(EMPTY_FORM);
-                  setUpdateId("");
-                  setUpdateEmployeeCode("");
-                  setUpdateDepartment("");
-                  setLookupEmail("");
-                  setUpdateError("");
-                  setUpdatedStaff(null);
-                }}
-              >
-                Clear
-              </button>
+          {updateId && <p className="mb-3 text-sm text-slate-500">Editing {updateCode}{updateDept ? ` · ${updateDept}` : ""}</p>}
+          {updateError && <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{updateError}</p>}
+          {updated && <p className="mb-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">Updated: {updated.fullName} — {updated.email}</p>}
+          <form className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4" onSubmit={onUpdate}>
+            {fields(updateForm, setUpdateForm)}
+            <div className="col-span-full flex gap-2">
+              <button type="submit" className={`${btn} bg-teal-700 px-5 text-white`} disabled={updateLoading || !updateId}>{updateLoading && updateId ? "Updating..." : "Update staff"}</button>
+              <button type="button" className={`${btn} border border-slate-200 bg-slate-100 dark:border-slate-600 dark:bg-slate-700`} onClick={clearUpdate}>Clear</button>
             </div>
           </form>
         </section>
