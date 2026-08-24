@@ -5,7 +5,7 @@ import axios from "axios";
 
 const BASE = (process.env.NEXT_PUBLIC_BACKEND_URL || "https://testaug.onrender.com").replace(/\/+$/, "");
 const http = axios.create({ baseURL: BASE, headers: { "Content-Type": "application/json" } });
-const EMPTY = { fullName: "", email: "", phone: "", role: "", shift: "", status: "Active", joiningDate: "" };
+const EMPTY = { fullName: "", email: "", phone: "", role: "", shift: "", status: "Active", joinYear: "", joinMonth: "", joinDay: "" };
 const inp = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800";
 const btn = "rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-60";
 
@@ -23,6 +23,39 @@ function toYmd(value) {
   if (!value) return "";
   const s = String(value).slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+}
+
+const YEARS = Array.from({ length: 11 }, (_, i) => String(new Date().getFullYear() - 5 + i));
+const MONTHS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0"));
+const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, "0"));
+
+function splitYmd(value) {
+  const ymd = toYmd(value);
+  if (!ymd) return { y: "", m: "", d: "" };
+  const [y, m, d] = ymd.split("-");
+  return { y, m, d };
+}
+
+function getJoiningDate(form) {
+  const { joinYear, joinMonth, joinDay } = form;
+  return joinYear && joinMonth && joinDay ? `${joinYear}-${joinMonth}-${joinDay}` : "";
+}
+
+function staffPayload(form) {
+  return {
+    fullName: form.fullName,
+    email: form.email,
+    phone: form.phone,
+    role: form.role,
+    shift: form.shift,
+    status: form.status,
+    joiningDate: getJoiningDate(form),
+  };
+}
+
+function setJoiningDate(form, value) {
+  const { y, m, d } = splitYmd(value);
+  return { ...form, joinYear: y, joinMonth: m, joinDay: d };
 }
 
 export default function StaffManagementPage() {
@@ -71,7 +104,17 @@ export default function StaffManagementPage() {
     setUpdateCode(m.employeeCode || "");
     setUpdateDept(m.department || "");
     setLookupEmail(m.email);
-    setUpdateForm({ fullName: m.fullName || "", email: m.email || "", phone: m.phone || "", role: m.role || "", shift: m.shift || "", status: m.status || "Active", joiningDate: toYmd(m.joiningDate) });
+    setUpdateForm(setJoiningDate({
+      fullName: m.fullName || "",
+      email: m.email || "",
+      phone: m.phone || "",
+      role: m.role || "",
+      shift: m.shift || "",
+      status: m.status || "Active",
+      joinYear: "",
+      joinMonth: "",
+      joinDay: "",
+    }, m.joiningDate));
     setUpdateError("");
     setUpdated(null);
     setTab("update");
@@ -93,10 +136,11 @@ export default function StaffManagementPage() {
     setCreateError("");
     setCreated(null);
     try {
-      const r = await api("post", "/api/staff", { ...createForm, joiningDate: toYmd(createForm.joiningDate) });
+      const r = await api("post", "/api/staff", staffPayload(createForm));
       setCreated(r.data);
       setCreateForm(EMPTY);
       setRefresh((n) => n + 1);
+      setTab("list");
     } catch (e) {
       setCreateError(errMsg(e, "Failed to create staff"));
     } finally {
@@ -128,8 +172,19 @@ export default function StaffManagementPage() {
     setUpdateError("");
     setUpdated(null);
     try {
-      const r = await api("put", `/api/staff/${updateId}`, { ...updateForm, joiningDate: toYmd(updateForm.joiningDate) });
+      const r = await api("put", `/api/staff/${updateId}`, staffPayload(updateForm));
       setUpdated(r.data);
+      setUpdateForm(setJoiningDate({
+        fullName: r.data.fullName || "",
+        email: r.data.email || "",
+        phone: r.data.phone || "",
+        role: r.data.role || "",
+        shift: r.data.shift || "",
+        status: r.data.status || "Active",
+        joinYear: "",
+        joinMonth: "",
+        joinDay: "",
+      }, r.data.joiningDate));
       setUpdateCode(r.data.employeeCode || "");
       setUpdateDept(r.data.department || "");
       setRefresh((n) => n + 1);
@@ -166,16 +221,25 @@ export default function StaffManagementPage() {
         ))}
         <label className="flex flex-col gap-1 text-xs font-semibold">
           Joining date
-          <input
-            className={inp}
-            type="text"
-            placeholder="YYYY-MM-DD"
-            pattern="\d{4}-\d{2}-\d{2}"
-            maxLength={10}
-            value={form.joiningDate}
-            onChange={(e) => setForm({ ...form, joiningDate: e.target.value })}
-            required
-          />
+          <div className="flex gap-2">
+            {[
+              ["joinYear", YEARS, "YYYY"],
+              ["joinMonth", MONTHS, "MM"],
+              ["joinDay", DAYS, "DD"],
+            ].map(([key, options, ph]) => (
+              <select
+                key={key}
+                className={inp}
+                value={form[key]}
+                onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                required
+              >
+                <option value="">{ph}</option>
+                {options.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            ))}
+          </div>
+          {getJoiningDate(form) && <span className="text-xs font-normal text-slate-500">{getJoiningDate(form)}</span>}
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold">
           Role
