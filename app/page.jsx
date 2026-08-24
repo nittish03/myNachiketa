@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   createStaff,
   deleteStaff,
@@ -19,26 +19,24 @@ const EMPTY_FORM = {
   joiningDate: "",
 };
 
-const EMPTY_FILTERS = {
-  roles: [],
-  departments: [],
-  shifts: [],
-  statuses: [],
-};
-
 export default function StaffManagementPage() {
   const [activeTab, setActiveTab] = useState("list");
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+
+  const [filters, setFilters] = useState({
+    roles: [],
+    departments: [],
+    shifts: [],
+    statuses: [],
+  });
+
   const [staff, setStaff] = useState([]);
   const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
-
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [shiftFilter, setShiftFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
-
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState("");
 
@@ -57,62 +55,45 @@ export default function StaffManagementPage() {
   const [updatedStaff, setUpdatedStaff] = useState(null);
 
   const [deleteLoadingId, setDeleteLoadingId] = useState("");
+  const [refreshList, setRefreshList] = useState(0);
 
-  const loadFilters = useCallback(async () => {
-    try {
-      const res = await getFilters();
-      setFilters(res.data);
-    } catch (err) {
-      setListError(err.message || "Failed to load filters");
+  useEffect(() => {
+    async function loadFilters() {
+      try {
+        const res = await getFilters();
+        setFilters(res.data);
+      } catch (err) {
+        setListError(err.message || "Failed to load filters");
+      }
     }
+    loadFilters();
   }, []);
 
-  const loadStaff = useCallback(async () => {
-    setListLoading(true);
-    setListError("");
-    try {
-      const res = await getStaff({
-        q: search,
-        role: roleFilter,
-        department: departmentFilter,
-        shift: shiftFilter,
-        status: statusFilter,
-        page,
-        limit: 10,
-      });
-      setStaff(res.data);
-      setMeta(res.meta);
-    } catch (err) {
-      setListError(err.message || "Failed to load staff");
-      setStaff([]);
-    } finally {
-      setListLoading(false);
+  useEffect(() => {
+    async function loadStaff() {
+      setListLoading(true);
+      setListError("");
+      try {
+        const res = await getStaff({
+          q: search,
+          role: roleFilter,
+          department: departmentFilter,
+          shift: shiftFilter,
+          status: statusFilter,
+          page,
+          limit: 10,
+        });
+        setStaff(res.data);
+        setMeta(res.meta);
+      } catch (err) {
+        setListError(err.message || "Failed to load staff");
+        setStaff([]);
+      } finally {
+        setListLoading(false);
+      }
     }
-  }, [search, roleFilter, departmentFilter, shiftFilter, statusFilter, page]);
-
-  useEffect(() => {
-    loadFilters();
-  }, [loadFilters]);
-
-  useEffect(() => {
     loadStaff();
-  }, [loadStaff]);
-
-  function resetCreateForm() {
-    setCreateForm(EMPTY_FORM);
-    setCreateError("");
-    setCreatedStaff(null);
-  }
-
-  function resetUpdateForm() {
-    setUpdateForm(EMPTY_FORM);
-    setUpdateId("");
-    setUpdateEmployeeCode("");
-    setUpdateDepartment("");
-    setLookupEmail("");
-    setUpdateError("");
-    setUpdatedStaff(null);
-  }
+  }, [search, roleFilter, departmentFilter, shiftFilter, statusFilter, page, refreshList]);
 
   function startEdit(staffMember) {
     setUpdateId(staffMember.id);
@@ -142,7 +123,7 @@ export default function StaffManagementPage() {
       const res = await createStaff(createForm);
       setCreatedStaff(res.data);
       setCreateForm(EMPTY_FORM);
-      await loadStaff();
+      setRefreshList((n) => n + 1);
     } catch (err) {
       setCreateError(err.message || "Failed to create staff");
     } finally {
@@ -187,7 +168,7 @@ export default function StaffManagementPage() {
       setUpdatedStaff(res.data);
       setUpdateEmployeeCode(res.data.employeeCode || "");
       setUpdateDepartment(res.data.department || "");
-      await loadStaff();
+      setRefreshList((n) => n + 1);
     } catch (err) {
       setUpdateError(err.message || "Failed to update staff");
     } finally {
@@ -196,19 +177,23 @@ export default function StaffManagementPage() {
   }
 
   async function handleDelete(staffMember) {
-    const confirmed = window.confirm(
-      `Delete ${staffMember.fullName} (${staffMember.email})?`
-    );
-    if (!confirmed) return;
-
+    if (!window.confirm(`Delete ${staffMember.fullName} (${staffMember.email})?`)) {
+      return;
+    }
     setDeleteLoadingId(staffMember.id);
     setListError("");
     try {
       await deleteStaff(staffMember.id);
       if (updateId === staffMember.id) {
-        resetUpdateForm();
+        setUpdateId("");
+        setUpdateForm(EMPTY_FORM);
+        setUpdateEmployeeCode("");
+        setUpdateDepartment("");
+        setLookupEmail("");
+        setUpdateError("");
+        setUpdatedStaff(null);
       }
-      await loadStaff();
+      setRefreshList((n) => n + 1);
     } catch (err) {
       setListError(err.message || "Failed to delete staff");
     } finally {
@@ -506,7 +491,15 @@ export default function StaffManagementPage() {
               <button type="submit" className="auth-submit staff-submit" disabled={createLoading}>
                 {createLoading ? "Creating..." : "Create staff"}
               </button>
-              <button type="button" className="staff-btn staff-btn-secondary" onClick={resetCreateForm}>
+              <button
+                type="button"
+                className="staff-btn staff-btn-secondary"
+                onClick={() => {
+                  setCreateForm(EMPTY_FORM);
+                  setCreateError("");
+                  setCreatedStaff(null);
+                }}
+              >
                 Reset
               </button>
             </div>
@@ -554,7 +547,19 @@ export default function StaffManagementPage() {
               >
                 {updateLoading && updateId ? "Updating..." : "Update staff"}
               </button>
-              <button type="button" className="staff-btn staff-btn-secondary" onClick={resetUpdateForm}>
+              <button
+                type="button"
+                className="staff-btn staff-btn-secondary"
+                onClick={() => {
+                  setUpdateForm(EMPTY_FORM);
+                  setUpdateId("");
+                  setUpdateEmployeeCode("");
+                  setUpdateDepartment("");
+                  setLookupEmail("");
+                  setUpdateError("");
+                  setUpdatedStaff(null);
+                }}
+              >
                 Clear
               </button>
             </div>
