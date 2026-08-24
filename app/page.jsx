@@ -216,7 +216,7 @@ export default function StaffManagementPage() {
     }
   }
 
-  function renderFormFields(form, setForm, idPrefix) {
+  function renderFormFields(form, setForm) {
     return (
       <>
         <label className="staff-label">
@@ -501,7 +501,7 @@ export default function StaffManagementPage() {
             </div>
           )}
           <form className="staff-form" onSubmit={handleCreate}>
-            {renderFormFields(createForm, setCreateForm, "create")}
+            {renderFormFields(createForm, setCreateForm)}
             <div className="staff-form-actions">
               <button type="submit" className="auth-submit staff-submit" disabled={createLoading}>
                 {createLoading ? "Creating..." : "Create staff"}
@@ -545,7 +545,7 @@ export default function StaffManagementPage() {
           )}
 
           <form className="staff-form" onSubmit={handleUpdate}>
-            {renderFormFields(updateForm, setUpdateForm, "update")}
+            {renderFormFields(updateForm, setUpdateForm)}
             <div className="staff-form-actions">
               <button
                 type="submit"
